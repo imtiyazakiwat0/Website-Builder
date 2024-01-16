@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Website Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" />
+  <style>
+    /* Add mobile styles */
+    @media only screen and (max-width: 767px) {
+      h1 {
+        font-size: 32px;
+      }
+
+      .form-control {
+        font-size: 16px;
+      }
+
+      .btn {
+        font-size: 20px;
+        padding: 10px 20px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">IMT Website Generator</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="#">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/about">About</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/contact">Contact</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link disabled">API pricing</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+  <div class="container my-4">
+    <h1 class="mt-5">Website Builder</h1>
+    <p></p>
+    <form id="generate-form">
+      <div class="form-group">
+        <label for="user-input">Enter the name or content of your website:</label>
+        <textarea class="form-control" id="user-input" rows="5" required></textarea>
+      </div>
+      <button id="generate-button" type="submit" class="btn btn-primary my-3">Generate Your Website</button>
+      <div id="spinner" class="spinner-border text-primary d-none" role="status">
+        <span class="sr-only">Loading...</span>
+      </div>
+    </form>
+    <div id="generated-html-container"></div>
+  </div>
+  <footer class="bg-dark text-light py-5">
+    <!-- Footer content here -->
+  </footer>
+  <script>
+    const form = document.querySelector("#generate-form");
+    const spinner = document.querySelector("#spinner");
+    const container = document.querySelector("#generated-html-container");
+    const generateButton = document.querySelector("#generate-button");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      spinner.classList.remove("d-none"); // show the spinner
+      generateButton.classList.add("d-none"); // hide the generate button
+
+      const userInput = document.querySelector("#user-input").value;
+
+      // Send request to OpenAI API to generate a list of pages
+      const response = await fetch("https://api.openai.com/v1/engines/text-davinci-003/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer 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",
+        },
+        body: JSON.stringify({
+          "prompt": `List out the pages that should be created for the website ${userInput}:`,
+          "temperature": 0.5,
+          "max_tokens": 20,
+          "top_p": 1,
+          "frequency_penalty": 0,
+          "presence_penalty": 0,
+        }),
+      });
+
+      const data = await response.json();
+      const pages = data.choices[0].text.split("\n").slice(1, -1).map((page) => page.trim().replace(/[0-9.]/g, ""));
+
+      const prompts = pages.map((page) => `${page} page: for ${userInput} Create an elegant single-file HTML document using Bootstrap classes, JavaScript, and images from Unsplash when necessary. Incorporate a responsive navbar, don't add 'about' and 'contact' navigation list items in the navbar, a hero section, and a footer, ensuring that the design is mobile-friendly. Include media queries for optimal mobile view.`);
+
+      const generatedHTML = [];
+
+      for (let i = 0; i < prompts.length; i++) {
+        // Send request to OpenAI API with the current prompt
+        const response = await fetch("https://api.openai.com/v1/engines/text-davinci-003/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer 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",
+          },
+          body: JSON.stringify({
+            "prompt": prompts[i],
+            "temperature": 0.5,
+            "max_tokens": 2000,
+            "top_p": 1,
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
+          }),
+        });
+
+        const data = await response.json();
+        const html = data.choices[0].text;
+
+        generatedHTML.push(html);
+      }
+
+      // Create a folder to store the generated pages
+      const folderName = userInput.toLowerCase().replace(/[^a-zA-Z0-9]/g, "-");
+      const folderPath = `./${folderName}`;
+      await createFolder(folderPath);
+
+      for (let i = 0; i < generatedHTML.length; i++) {
+        const fileName = i === 0 ? "index.html" : `${pages[i].toLowerCase().replace(/[^a-zA-Z0-9]/g, "-")}.html`;
+        const filePath = `${folderPath}/${fileName}`;
+
+        // Write the HTML code to the file in the folder
+        await writeFile(filePath, generatedHTML[i]);
+      }
+
+      // Update the navbar of each page
+      for (let i = 0; i < generatedHTML.length; i++) {
+        const fileName = i === 0 ? "index.html" : `${pages[i].toLowerCase().replace(/[^a-zA-Z0-9]/g, "-")}.html`;
+        const filePath = `${folderPath}/${fileName}`;
+
+        // Read the HTML code of the current page
+        const currentHTML = await readFile(filePath);
+
+        // Find the navbar element in the HTML code
+        const navbarStartIndex = currentHTML.indexOf("<nav");
+        const navbarEndIndex = currentHTML.indexOf("</nav>", navbarStartIndex) + "</nav>".length;
+        const navbarHTML = currentHTML.substring(navbarStartIndex, navbarEndIndex);
+
+        // Find the start and end index of the navbar list
+        const listStartIndex = navbarHTML.indexOf("<li");
+        const listEndIndex = navbarHTML.lastIndexOf("</li>") + "</li>".length;
+        const listHTML = navbarHTML.substring(listStartIndex, listEndIndex);
+
+        // Generate the updated list items HTML code
+        let updatedListItemsHTML = "";
+        for (let j = 0; j < pages.length; j++) {
+          if (j === 0) {
+            updatedListItemsHTML += `<li class="nav-item active"><a class="nav-link" href="index.html">Home</a></li>`;
+          } else {
+            updatedListItemsHTML += `<li class="nav-item"><a class="nav-link" href="${pages[j].toLowerCase().replace(/[^a-zA-Z0-9]/g, "-")}.html">${pages[j]}</a></li>`;
+          }
+        }
+
+        // Replace the list items in the navbar HTML code
+        const updatedNavbarHTML = navbarHTML.replace(listHTML, updatedListItemsHTML);
+
+        // Replace the existing navbar HTML code with the updated one
+        const updatedHTML = currentHTML.replace(navbarHTML, updatedNavbarHTML);
+
+        // Write the updated HTML code to the file
+        await writeFile(filePath, updatedHTML);
+      }
+
+      spinner.classList.add("d-none"); // hide the spinner
+      generateButton.classList.remove("d-none"); // show the generate button
+      container.innerHTML = `<p class="text-success">Website successfully generated! Check the '${folderName}' folder for the generated pages.</p>`;
+    });
+
+    // Helper function to create a folder
+    async function createFolder(folderPath) {
+      await fetch("/create-folder", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ folderPath }),
+      });
+    }
+
+    // Helper function to write a file
+    async function writeFile(filePath, content) {
+      await fetch("/write-file", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ filePath, content }),
+      });
+    }
+
+    // Helper function to read a file
+    async function readFile(filePath) {
+      const response = await fetch("/read-file", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ filePath }),
+      });
+
+      const data = await response.json();
+      return data.content;
+    }
+  </script>
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.1/dist/umd/popper.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+</body>
+</html>
